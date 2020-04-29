@@ -6,6 +6,7 @@ breed [care-centers care-center]
 breed [people person]
 
 people-own [age sex race location]
+patches-own [patch-region]
 
 ;;; SETUP PROCEDURES
 
@@ -20,7 +21,25 @@ to setup
     set cors find-corners
   ]
   draw-map (list (item 0 cors) (item 1 cors)) (list (item 2 cors) (item 3 cors))
-  draw-boundaries
+  if show-boundaries? [draw-boundaries]
+  place-care-centers
+  map-regions-to-patches
+  setup-population
+end
+
+to setup-local
+  ca
+  reset-ticks
+  set care-locations list (list long1 lat1) (list long2 lat2)
+  set cors (list (max list long1 long2) (max list lat1 lat2) (min list long1 long2) (min list lat1 lat2))
+  set region-polygons []
+  if read-data? [
+    read-data
+    read-patch-regions
+    set cors find-corners
+  ]
+  import-drawing "local_image.jpg"
+  if show-boundaries? [draw-boundaries]
   place-care-centers
   setup-population
 end
@@ -86,6 +105,15 @@ to read-population-data
   file-close-all
 end
 
+to read-patch-regions
+  file-open "patch-region-file.csv"
+  while [not file-at-end?][
+    let row csv:from-row file-read-line
+    ask patch (item 0 row) (item 1 row) [set patch-region (item 2 row)]
+  ]
+  file-close-all
+end
+
 ;;; DRAWING AND GEOGRAHIC INFO
 
 to-report find-corners
@@ -139,23 +167,32 @@ to-report get-care-color [ row ]
 end
 
 to place-people
+  let perturb 1
+  if location = "rural" or location = "palmharbor" [set location "pinellas"]
+  let coors [list pxcor pycor] of one-of patches with [patch-region = [location] of myself]
+  setxy (item 0 coors + (random-float perturb) - perturb / 2) (item 1 coors + (random-float perturb) - perturb / 2)
+end
+
+to map-regions-to-patches
+  let regions ["pinellas" "clearwater" "largo" "stpetersburg"]
   py:run "from py_scripts import raycast as rc"
-  loop [
-    setxy random-xcor random-ycor
-    let lat ycor-to-lat ycor
-    let lon xcor-to-lon xcor lat
+  ask patches [
+    let lat ycor-to-lat pycor
+    let lon xcor-to-lon pxcor lat
     py:set "x0" lon
     py:set "y0" lat
-    set location "pinellas"
-    ;if location = "rural" or location = "palmharbor" [
-    ;  set location "pinellas"
-    ;]
-    py:set "r0" location
-    let inside? py:runresult "rc.is_inside(x0,y0,r0)"
-    if inside? [stop]
-    ;setxy random-xcor random-ycor
-    ;setxy (xcor + (random-float 4) - 2) (ycor + (random-float 4) - 2)
+    foreach regions [ loc ->
+      py:set "r0" loc
+      let inside? py:runresult "rc.is_inside(x0,y0,r0)"
+      if inside? [set patch-region loc]
+    ]
   ]
+  write-patch-regions
+end
+
+to write-patch-regions
+  let csv-list [(list pxcor pycor patch-region)] of patches with [patch-region != 0]
+  csv:to-file "patch-region-file.csv" csv-list
 end
 
 ;;; GEOGRAPHIC REPORTERS
@@ -230,11 +267,11 @@ end
 GRAPHICS-WINDOW
 315
 10
-818
-514
+851
+547
 -1
 -1
-15.0
+16.0
 1
 10
 1
@@ -255,10 +292,10 @@ ticks
 30.0
 
 BUTTON
-30
-120
-110
-155
+65
+180
+145
+215
 NIL
 setup
 NIL
@@ -272,9 +309,9 @@ NIL
 1
 
 INPUTBOX
-30
+45
 235
-150
+165
 295
 long1
 27.8
@@ -283,9 +320,9 @@ long1
 Number
 
 INPUTBOX
-155
+170
 235
-275
+290
 295
 lat1
 -81.99
@@ -294,9 +331,9 @@ lat1
 Number
 
 INPUTBOX
-30
+45
 300
-150
+165
 360
 long2
 27.8999
@@ -305,9 +342,9 @@ long2
 Number
 
 INPUTBOX
-155
+170
 300
-275
+290
 360
 lat2
 -82.999
@@ -327,10 +364,10 @@ read-data?
 -1000
 
 CHOOSER
-140
-120
-292
-165
+170
+115
+305
+160
 Region
 Region
 "Downtown LA CA" "Pinellas FL"
@@ -345,7 +382,7 @@ num-people
 num-people
 0
 95000
-95.0
+1096.0
 1
 1
 NIL
@@ -358,6 +395,34 @@ SWITCH
 108
 people-visible?
 people-visible?
+0
+1
+-1000
+
+BUTTON
+185
+180
+270
+215
+NIL
+setup-local
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+SWITCH
+30
+120
+165
+153
+show-boundaries?
+show-boundaries?
 0
 1
 -1000
